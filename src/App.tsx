@@ -1648,11 +1648,29 @@ function App() {
 	const rememberPanelRef = useRef<(panel: NotchPanel) => void>(() => {});
 	const notchPinnedRef = useRef(false);
 	const releaseDeferredRef = useRef(false);
+	const hoverExpandTimerRef = useRef<number | null>(null);
+	const hoverCollapseTimerRef = useRef<number | null>(null);
+
+	const clearHoverExpand = () => {
+		if (hoverExpandTimerRef.current !== null) {
+			window.clearTimeout(hoverExpandTimerRef.current);
+			hoverExpandTimerRef.current = null;
+		}
+	};
+
+	const clearHoverCollapse = () => {
+		if (hoverCollapseTimerRef.current !== null) {
+			window.clearTimeout(hoverCollapseTimerRef.current);
+			hoverCollapseTimerRef.current = null;
+		}
+	};
 
 	// Shared hover-release, called on DOM hover end and when the backend
 	// reports the pointer left the (now click-through) notch window. Closes an
 	// open notch, remembering its panel, and returns to the resting mode.
 	const releaseNotchHover = () => {
+		clearHoverExpand();
+		clearHoverCollapse();
 		// A view being typed into (a Wi-Fi password) keeps the notch open; the
 		// release happens once it lets go, if the pointer is still away.
 		if (notchPinnedRef.current) {
@@ -1678,6 +1696,41 @@ function App() {
 				? restingModeRef.current
 				: prev
 		);
+	};
+
+	const scheduleHoverExpand = () => {
+		clearHoverCollapse();
+		releaseDeferredRef.current = false;
+		setIsHovered(true);
+		if (bloomModeRef.current === "shelf") clearShelfCollapse();
+
+		if (!isOpenRef.current && bloomModeRef.current !== "announcement") {
+			clearHoverExpand();
+			hoverExpandTimerRef.current = window.setTimeout(() => {
+				hoverExpandTimerRef.current = null;
+				if (!isOpenRef.current) {
+					if (restingModeRef.current === "music") {
+						openNotch("music");
+					} else {
+						openNotch(openingPanel());
+					}
+				}
+			}, 200);
+		}
+	};
+
+	const scheduleHoverCollapse = (immediate = false) => {
+		clearHoverExpand();
+		if (immediate) {
+			clearHoverCollapse();
+			releaseNotchHover();
+			return;
+		}
+		clearHoverCollapse();
+		hoverCollapseTimerRef.current = window.setTimeout(() => {
+			hoverCollapseTimerRef.current = null;
+			releaseNotchHover();
+		}, 220);
 	};
 
 	const clearShelfCollapse = () => {
@@ -3225,7 +3278,7 @@ function App() {
 				<motion.div
 					ref={bloomRef}
 					className={`bloom ${isHovered ? "expanded" : ""} ${isImpacted ? "is-impacted" : ""} ${isDragHovering ? "drag-hover" : ""}`}
-					onMouseEnter={() => setIsNotchHovered(true)}
+					onMouseEnter={() => { clearHoverCollapse(); setIsNotchHovered(true); }}
 					onMouseLeave={() => setIsNotchHovered(false)}
 					onWheel={handleWheel}
 					initial={{
@@ -3256,15 +3309,11 @@ function App() {
 					}}
 					onClick={(e) => {
 						e.stopPropagation();
+						clearHoverExpand();
 						if (!isOpen) openNotch(openingPanel());
 					}}
-					onHoverStart={() => {
-						releaseDeferredRef.current = false;
-						setIsHovered(true);
-						// Hovering the shelf cancels its post-drop auto-close.
-						if (bloomMode === "shelf") clearShelfCollapse();
-					}}
-					onHoverEnd={releaseNotchHover}
+					onHoverStart={scheduleHoverExpand}
+					onHoverEnd={() => scheduleHoverCollapse(false)}
 					style={{ originY: 0 }}
 					transition={{
 						width: { type: "spring", stiffness: 400, damping: 31 },
@@ -3783,8 +3832,20 @@ function App() {
 																			<button
 																				className={`album-art album-art-activity${!isPlaying ? " paused" : ""}`}
 																				aria-label="Open music"
+																				onMouseEnter={() => {
+																					clearHoverCollapse();
+																					if (!isOpenRef.current) {
+																						clearHoverExpand();
+																						hoverExpandTimerRef.current = window.setTimeout(() => {
+																							hoverExpandTimerRef.current = null;
+																							if (!isOpenRef.current) openNotch("music");
+																						}, 200);
+																					}
+																				}}
+																				onMouseLeave={() => scheduleHoverCollapse(false)}
 																				onClick={(e) => {
 																					e.stopPropagation();
+																					clearHoverExpand();
 																					openNotch("music");
 																				}}
 																				onContextMenu={(e) => {
@@ -4574,8 +4635,23 @@ function App() {
 								opacity: { duration: 0.15 }
 							}}
 							onAnimationComplete={() => reportNotchRect.current()}
+							onMouseEnter={() => {
+								clearHoverCollapse();
+								if (!isOpenRef.current) {
+									clearHoverExpand();
+									hoverExpandTimerRef.current = window.setTimeout(() => {
+										hoverExpandTimerRef.current = null;
+										if (!isOpenRef.current) {
+											setIsHovered(true);
+											openNotch("music");
+										}
+									}, 200);
+								}
+							}}
+							onMouseLeave={() => scheduleHoverCollapse(false)}
 							onClick={(e) => {
 								e.stopPropagation();
+								clearHoverExpand();
 								setIsHovered(true);
 								openNotch("music");
 							}}

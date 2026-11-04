@@ -124,7 +124,7 @@
   },
   "plugins": {
     "updater": {
-      "active": true,
+      "active": false,
       "endpoints": [
         "https://github.com/SehajveerSingh2005/bloom/releases/latest/download/latest.json"
       ],
